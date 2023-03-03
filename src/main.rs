@@ -2,9 +2,11 @@ use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use clap::Parser;
 use image::codecs::avif::AvifEncoder;
+use image::imageops::FilterType;
 use itertools::Itertools;
 use log::{debug, info};
 use rayon::prelude::*;
@@ -22,10 +24,10 @@ fn main() -> Result<()> {
     let format = Regex::new(r".*_(-?\d+)_(-?\d+)\.")?;
     let args: Cli = Cli::parse();
 
-    let base_wh = (4096, 4096u32);
-    let tile_wh = (256, 256);
+    let base_wh = 4096u32;
+    let tile_wh = 256u32;
 
-    let tile_per_base = base_wh.0 / tile_wh.0; // 16
+    let tile_per_base = base_wh / tile_wh; // 16
 
     let mut bases = Vec::new();
     for entry in fs::read_dir(args.input)? {
@@ -74,16 +76,37 @@ fn main() -> Result<()> {
         };
 
         let img = image::open(&base)?;
-        info!("loaded {base:?}");
-        for ty in 0..tile_per_base {
-            for tx in 0..tile_per_base {
-                let crop = img.crop_imm(tx * tile_wh.0, ty * tile_wh.1, tile_wh.0, tile_wh.1);
-                let dx = x * tile_per_base + tx;
-                let dy = y * tile_per_base + ty;
-                create_dir_and_save(format!("out/4/{dx}/{dy}.avif"), &crop)?;
-                debug!("saved {tx}x{ty} in {x}x{y} as {dx}x{dy}");
+        let mut time_manip = 0;
+        let mut time_save = 0;
+        for neg_zoom in 0..=4 {
+            let mul = 2u32.pow(neg_zoom);
+            let tiles = tile_per_base / mul;
+            let step = tile_wh * mul;
+            let zoom = 7 - neg_zoom;
+            for ty in 0..tiles {
+                for tx in 0..tiles {
+                    let dx = x * tiles + tx;
+                    let dy = y * tiles + ty;
+                    let dest = format!("out/{zoom}/{dx}/{dy}.avif");
+                    if fs::metadata(&dest).is_ok() {
+                        continue;
+                    }
+
+                    let start = Instant::now();
+                    let crop = img.crop_imm(tx * step, ty * step, step, step);
+                    let crop = crop.resize(tile_wh, tile_wh, FilterType::Lanczos3);
+                    time_manip += start.elapsed().as_nanos();
+                    let start = Instant::now();
+                    create_dir_and_save(dest, &crop)?;
+                    time_save += start.elapsed().as_nanos();
+                    debug!("saved {tx}x{ty} in {x}x{y} as {dx}x{dy}");
+                }
             }
         }
+
+        let time_manip = time_manip as f64 / 1e9;
+        let time_save = time_save as f64 / 1e9;
+        info!("processed {base:?}, manip {time_manip:.2}s, save {time_save:.2}s");
 
         Ok(())
     })?;
@@ -105,7 +128,7 @@ fn create_dir_and_save(path: impl AsRef<Path>, img: &image::DynamicImage) -> Res
     )
     .with_context(|| anyhow!("creating directories for {path:?}"))?;
     let mut out = tempfile_fast::Sponge::new_for(path)?;
-    let enc = AvifEncoder::new_with_speed_quality(&mut out, 10, 70);
+    let enc = AvifEncoder::new_with_speed_quality(&mut out, 9, 60);
     enc.write_image(img.as_bytes(), img.width(), img.height(), img.color())?;
     out.commit()?;
     // img.save_with_format(path, ImageFormat::Avif)?;
