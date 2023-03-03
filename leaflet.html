@@ -48,17 +48,19 @@
 
   // > Represents an affine transformation: a set of coefficients a, b, c, d for transforming
   // > a point of a form (x, y) into (a*x + b, c*y + d) and doing the reverse.
-  let trans = new L.Transformation(1/16, 144, 1/16, 144);
+  // above docs written for an 8x8 screenshot, not a 16x16 one, below setup for 16x16
+  const off = 8.5 * (512/32);
+  let trans = new L.Transformation(1/32, off, 1/32, off);
   L.CRS.MySimple = L.extend({}, L.CRS.Simple, {
     transformation: trans,
   });
   const map = L.map('map', {
     crs: L.CRS.MySimple,
-  }).setView([0, 0], 7);
+  }).setView([0, 0], 6);
   L.tileLayer('out/{z}/{x}/{y}.avif', {
-    minZoom: 3,
-    maxNativeZoom: 7,
-    maxZoom: 10,
+    minZoom: 4,
+    maxNativeZoom: 8,
+    maxZoom: 11,
   }).addTo(map);
 
   var popup = L.popup();

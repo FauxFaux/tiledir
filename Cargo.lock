@@ -1281,6 +1281,7 @@ dependencies = [
  "itertools",
  "log",
  "pretty_env_logger",
+ "rand",
  "rayon",
  "regex",
  "tempfile-fast",
