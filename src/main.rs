@@ -99,8 +99,31 @@ fn main() -> Result<()> {
     // (note that rayon already has a weird execution order)
     xys.shuffle(&mut thread_rng());
 
-    xys.into_par_iter().try_for_each(|(x, y)| -> Result<()> {
-        let Some(base) = base_lookup.get(&(i64::from(x) + lx, i64::from(y) + ly)) else {
+
+
+    let shrunk = xys
+        .par_iter()
+        .map(|(x, y)| -> Result<Option<((u32, u32), DynamicImage)>> {
+            let Some(base) = base_lookup.get(&(i64::from(*x) + lx, i64::from(*y) + ly)) else {
+                return Ok(None);
+            };
+
+            let img = image::open(base)?;
+            if is_entirely_transparent(&img) {
+                return Ok(None);
+            }
+
+            Ok(Some(((*x, *y), img.resize(256, 256, FilterType::Lanczos3))))
+        })
+        .collect::<Result<Vec<_>>>()?
+        .into_iter()
+        .flatten()
+        .collect::<HashMap<_, _>>();
+
+    println!("shrunk: {:?}", shrunk.keys().collect_vec());
+
+    xys.par_iter().try_for_each(|(x, y)| -> Result<()> {
+        let Some(base) = base_lookup.get(&(i64::from(*x) + lx, i64::from(*y) + ly)) else {
             return Ok(());
         };
 
@@ -150,12 +173,6 @@ fn main() -> Result<()> {
         Ok(())
     })?;
 
-    // for (x, y, path) in bases {
-    //     let img = image::open(&path)?;
-    //     let t00 = img.crop_imm(0, 0, 256, 256);
-    //     img.resize(256, 256, image::imageops::FilterType::Nearest);
-    //     println!("{} {} {} {} {:?}", x, y, img.width(), img.height(), path);
-    // }
     Ok(())
 }
 
