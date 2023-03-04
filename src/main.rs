@@ -117,7 +117,7 @@ fn main() -> Result<()> {
             let step = tile_wh * mul;
             // 8 means 2^8 = 256 tiles; (4096 / 256px/tile) = 16 tiles per screenshot
             // 256/16 = 16 screenshots; i.e. -8 -> 7
-            let zoom = 8 - neg_zoom;
+            let zoom = 9 - neg_zoom;
             for ty in 0..tiles {
                 for tx in 0..tiles {
                     let dx = x * tiles + tx;
