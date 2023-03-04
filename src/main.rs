@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
 use clap::Parser;
@@ -22,8 +23,10 @@ struct Cli {
 
     /// avif speed; 0 (slowest) - 10 (fastest); meaning not clearly defined
     ///
-    /// 4 means ~30 minutes; 9 is closer to ~10 minutes
-    #[clap(short, long, default_value = "6", value_parser = clap::value_parser!(u8).range(0..=10))]
+    /// 6 -> ~1h30m, 8 -> ~30 minutes; 10 -> ~10 minutes
+    ///
+    /// 6 is the upstream default but I can't say I'd recommend waiting
+    #[clap(short, long, default_value = "8", value_parser = clap::value_parser!(u8).range(0..=10))]
     speed: u8,
 
     /// avif quality; 0 (terrible) - 100 (uselessly huge)
@@ -40,7 +43,7 @@ struct ImageOps {
 }
 
 fn main() -> Result<()> {
-    pretty_env_logger::init();
+    pretty_env_logger::init_timed();
     let format = Regex::new(r".*_(-?\d+)_(-?\d+)\.")?;
     let args: Cli = Cli::parse();
 
@@ -54,6 +57,7 @@ fn main() -> Result<()> {
 
     let tile_per_base = base_wh / tile_wh; // 16
 
+    info!("discovering files...");
     let mut bases = Vec::new();
     for entry in fs::read_dir(args.input)? {
         let entry = entry?;
@@ -86,6 +90,8 @@ fn main() -> Result<()> {
     let bw = u32::try_from(rx - lx)?;
     let bh = u32::try_from(ry - ly)?;
 
+    info!("files available from {lx}x{ly} -> {rx}x{ry} ({bw}x{bh})");
+
     let base_lookup = bases
         .into_iter()
         .map(|(x, y, path)| ((x, y), path))
@@ -99,7 +105,11 @@ fn main() -> Result<()> {
     // (note that rayon already has a weird execution order)
     xys.shuffle(&mut thread_rng());
 
+    let shrunk_res = 256;
 
+    info!("loading {} (shrunk) images for lower zoom levels...", xys.len());
+
+    let complete = AtomicUsize::new(0);
 
     let shrunk = xys
         .par_iter()
@@ -113,14 +123,63 @@ fn main() -> Result<()> {
                 return Ok(None);
             }
 
-            Ok(Some(((*x, *y), img.resize(256, 256, FilterType::Lanczos3))))
+            Ok(Some((
+                (*x, *y),
+                img.resize(shrunk_res, shrunk_res, FilterType::Lanczos3),
+            )))
         })
         .collect::<Result<Vec<_>>>()?
         .into_iter()
         .flatten()
         .collect::<HashMap<_, _>>();
 
-    println!("shrunk: {:?}", shrunk.keys().collect_vec());
+    assert_eq!(bw, bh);
+    let mega_res = (bw + 1) * shrunk_res;
+
+    let total_non_blank = shrunk.len();
+    info!("{total_non_blank} (shrunk) images are non-empty, compositing into a {mega_res}² image...");
+
+    let mut mega = DynamicImage::new_rgba8(mega_res, mega_res);
+    for y in 0..bh {
+        for x in 0..bw {
+            let Some(img) = shrunk.get(&(x, y)) else {
+                continue;
+            };
+            image::imageops::overlay(
+                &mut mega,
+                img,
+                i64::from(x * shrunk_res),
+                i64::from(y * shrunk_res),
+            );
+        }
+    }
+
+    drop(shrunk);
+
+    assert_eq!(mega.width(), mega.height());
+
+    info!("slicing mega image into initial zoom levels...");
+
+    (0..=4).into_par_iter().try_for_each(|zoom| -> Result<()> {
+        let mul = 2u32.pow(zoom);
+        let crop_wh = mega.width() / mul;
+        for y in 0..mul {
+            for x in 0..mul {
+                create_dir_and_save(
+                    format!("out/{zoom}/{x}/{y}.avif"),
+                    &mega
+                        .crop_imm(x * crop_wh, y * crop_wh, crop_wh, crop_wh)
+                        .resize(tile_wh, tile_wh, FilterType::Lanczos3),
+                    &img_ops,
+                )?;
+            }
+        }
+        Ok(())
+    })?;
+
+    drop(mega);
+
+    info!("chopping individual bases into the remaining zoom levels...");
 
     xys.par_iter().try_for_each(|(x, y)| -> Result<()> {
         let Some(base) = base_lookup.get(&(i64::from(*x) + lx, i64::from(*y) + ly)) else {
@@ -129,7 +188,7 @@ fn main() -> Result<()> {
 
         let img = image::open(base)?;
         if is_entirely_transparent(&img) {
-            info!("skipping entirely transparent image {base:?}");
+            debug!("skipping entirely transparent image {base:?}");
             return Ok(());
         }
         let mut time_manip = 0;
@@ -168,10 +227,13 @@ fn main() -> Result<()> {
 
         let time_manip = time_manip as f64 / 1e9;
         let time_save = time_save as f64 / 1e9;
-        info!("processed {base:?}, manip {time_manip:.2}s, save {time_save:.2}s");
+        let complete = complete.fetch_add(1, Ordering::SeqCst) + 1;
+        info!("processed {complete}/{total_non_blank}: {base:?} (manip {time_manip:.2}s, save {time_save:.2}s)");
 
         Ok(())
     })?;
+
+    info!("all done");
 
     Ok(())
 }
