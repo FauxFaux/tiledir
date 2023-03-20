@@ -15,7 +15,8 @@ regex = "1"
 tempfile-fast = "0.3.4"
 
 [dependencies.image]
-version = "0.24"
+#version = "0.24"
+git = "https://github.com/image-rs/image.git"
 default-features = false
 features = ["png", "jpeg", "pnm", "bmp", "avif-encoder"]
 

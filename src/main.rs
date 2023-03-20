@@ -9,6 +9,7 @@ use clap::Parser;
 use image::codecs::avif::AvifEncoder;
 use image::imageops::FilterType;
 use image::DynamicImage;
+use image::ImageEncoder;
 use itertools::Itertools;
 use log::{debug, info};
 use rand::prelude::*;
@@ -107,7 +108,10 @@ fn main() -> Result<()> {
 
     let shrunk_res = 256;
 
-    info!("loading {} (shrunk) images for lower zoom levels...", xys.len());
+    info!(
+        "loading {} (shrunk) images for lower zoom levels...",
+        xys.len()
+    );
 
     let complete = AtomicUsize::new(0);
 
@@ -137,7 +141,9 @@ fn main() -> Result<()> {
     let mega_res = (bw + 1) * shrunk_res;
 
     let total_non_blank = shrunk.len();
-    info!("{total_non_blank} (shrunk) images are non-empty, compositing into a {mega_res}² image...");
+    info!(
+        "{total_non_blank} (shrunk) images are non-empty, compositing into a {mega_res}² image..."
+    );
 
     let mut mega = DynamicImage::new_rgba8(mega_res, mega_res);
     for y in 0..bh {
