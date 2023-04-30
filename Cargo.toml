@@ -15,8 +15,8 @@ regex = "1"
 tempfile-fast = "0.3.4"
 
 [dependencies.image]
-#version = "0.24"
-git = "https://github.com/image-rs/image.git"
+# 0.24.5 and below's avif are broken on Safari
+version = "0.24.6"
 default-features = false
 features = ["png", "jpeg", "pnm", "bmp", "avif-encoder"]
 
