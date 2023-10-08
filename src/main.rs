@@ -69,7 +69,9 @@ fn main() -> Result<()> {
         let file_name = file_name
             .to_str()
             .ok_or_else(|| anyhow!("unrepresentable filename: {file_name:?}"))?;
-        let Some(captures) = format.captures(file_name) else { continue; };
+        let Some(captures) = format.captures(file_name) else {
+            continue;
+        };
         let x = captures
             .get(1)
             .ok_or(anyhow!("missing capture group 1"))?
