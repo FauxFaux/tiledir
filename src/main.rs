@@ -128,7 +128,7 @@ fn main() -> Result<()> {
                 return Ok(None);
             };
 
-            let img = image::open(base)?;
+            let img = image::open(base).with_context(|| anyhow!("reading {base:?} for shrunk"))?;
             if is_entirely_transparent(&img) {
                 return Ok(None);
             }
@@ -198,7 +198,8 @@ fn main() -> Result<()> {
             return Ok(());
         };
 
-        let img = image::open(base)?;
+        let img = image::open(base)
+            .with_context(|| anyhow!("reading {base:?} for remaining"))?;
         if is_entirely_transparent(&img) {
             debug!("skipping entirely transparent image {base:?}");
             return Ok(());
