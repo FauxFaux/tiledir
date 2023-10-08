@@ -85,10 +85,14 @@ fn main() -> Result<()> {
         bases.push((x, y, entry.path()));
     }
 
-    let lx = bases.iter().map(|(x, _, _)| *x).min().expect("non-empty");
-    let ly = bases.iter().map(|(_, y, _)| *y).min().expect("non-empty");
-    let rx = bases.iter().map(|(x, _, _)| *x).max().expect("non-empty");
-    let ry = bases.iter().map(|(_, y, _)| *y).max().expect("non-empty");
+    // let lx = bases.iter().map(|(x, _, _)| *x).min().expect("non-empty");
+    // let ly = bases.iter().map(|(_, y, _)| *y).min().expect("non-empty");
+    // let rx = bases.iter().map(|(x, _, _)| *x).max().expect("non-empty");
+    // let ry = bases.iter().map(|(_, y, _)| *y).max().expect("non-empty");
+    let lx = -15;
+    let ly = -15;
+    let rx = 16;
+    let ry = 16;
 
     let bw = u32::try_from(rx - lx)?;
     let bh = u32::try_from(ry - ly)?;
